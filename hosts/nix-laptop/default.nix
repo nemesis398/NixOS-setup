@@ -5,6 +5,6 @@
     ./disk-config.nix
   ];
 
-  networking.hostname = "nix-laptop";
+  networking.hostName = "nix-laptop";
   system.stateVersion = "25.05";
 }

@@ -234,9 +234,18 @@ This is the *minimal* flake that evaluates cleanly with stubs in place. It will 
     dates = "weekly";
     options = "--delete-older-than 30d";
   };
+
+  # Bootloader (ADR-05: systemd-boot only). Enabled fleet-wide here so the
+  # Phase 1 skeleton already satisfies the NixOS bootloader assertion;
+  # without an explicit bootloader, evaluation falls back to GRUB and then
+  # fails because `boot.loader.grub.devices` is unset.
+  boot.loader.systemd-boot.enable = true;
   boot.loader.systemd-boot.configurationLimit = 20;
+  boot.loader.efi.canTouchEfiVariables = true;
 }
 ```
+
+> 💡 Putting the bootloader settings in `modules/system/default.nix` rather than in each host file follows the rule that *fleet-wide concerns live in the fleet-wide module*. Both hosts use systemd-boot per ADR-05; there is nothing per-host about it. Phase 4 (§6.2) therefore does **not** repeat these lines in the host's expanded `default.nix`.
 
 `modules/system/locale.nix`:
 
@@ -300,10 +309,20 @@ The real `hardware-configuration.nix` is generated *on the target host* during i
   boot.kernelModules = [ ];
   hardware.enableRedistributableFirmware = true;
   nixpkgs.hostPlatform = "x86_64-linux";
+
+  # Phase 1 stub: satisfies the `fileSystems."/"` assertion so the flake
+  # evaluates. The real entry comes from `nixos-generate-config` in Phase 4
+  # and will point at the @root BTRFS subvolume on /dev/mapper/vg_system-lv_root.
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/PLACEHOLDER";
+    fsType = "ext4";
+  };
 }
 ```
 
 Same for `nix-laptop`.
+
+> 💡 Why the stub is needed: NixOS 25.05 hard-asserts that `fileSystems."/"` is defined as part of `system.build.toplevel`. Without a stub, `nix flake check --no-build` aborts with *"The 'fileSystems' option does not specify your root file system."* The `by-label/PLACEHOLDER` device is intentionally bogus — it will never be mounted, because Phase 4 overwrites this file wholesale before any `nixos-rebuild switch` ever runs.
 
 #### 3.7 Write a placeholder disk-config
 
@@ -666,7 +685,7 @@ With `/mnt` still mounted from Phase 3:
 nixos-generate-config --root /mnt --show-hardware-config
 ```
 
-This prints a hardware config to stdout. **Copy it into the repo on the dev machine** at `hosts/<host>/hardware-configuration.nix`, replacing the placeholder from Phase 1.
+This prints a hardware config to stdout. **Copy it into the repo on the dev machine** at `hosts/<host>/hardware-configuration.nix`, replacing the placeholder from Phase 1 (including the Phase 1 `fileSystems."/"` stub — the generated file carries the real entry pointing at the `@root` subvolume).
 
 You can do this in several ways; the cleanest is:
 
@@ -703,10 +722,9 @@ Edit `hosts/nix-desktop/default.nix`:
   system.stateVersion = "25.05";
 
   # ── Boot (Architecture Layer 1 + ADR-05) ─────────────────────────────────
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-  boot.loader.systemd-boot.configurationLimit = 20;
-
+  # systemd-boot itself (`enable`, `configurationLimit`, `canTouchEfiVariables`)
+  # is declared fleet-wide in `modules/system/default.nix`. Per-host boot
+  # concerns — LUKS unlock, hibernate resume, kernel — stay here.
   boot.initrd.luks.devices.cryptroot = {
     # device = "/dev/disk/by-uuid/..."  ← already set by hardware-configuration.nix
     allowDiscards = true;
@@ -2402,6 +2420,8 @@ A single table that says yes/no per phase. Don't trust subjective "feels working
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | `nix flake check` says "file not found" | Untracked file | `git add` and retry |
+| `nix flake check` says *"fileSystems option does not specify your root file system"* | Phase 1 `fileSystems."/"` stub missing from `hardware-configuration.nix` | Restore the stub from §3.6, or — if you're past Phase 4 — confirm `nixos-generate-config` output was actually copied in |
+| `nix flake check` says *"set boot.loader.grub.devices"* though you want systemd-boot | `boot.loader.systemd-boot.enable = true;` missing | Add it to `modules/system/default.nix` (see §3.5); GRUB is the fallback when no bootloader is explicitly enabled |
 | LUKS prompt doesn't appear at boot | `boot.initrd.luks.devices` missing | Re-check `hardware-configuration.nix` |
 | Hibernate fails silently | `resume=` kernel param missing or wrong UUID | Verify `boot.kernelParams` and `boot.resumeDevice` |
 | Hyprland binary is wrong version | Missing `programs.hyprland.package = inputs.hyprland.packages.<sys>.hyprland` | Add it |

@@ -1,7 +1,7 @@
 { ... }:
 {
   users.users.mboehme = {
-    isNormalUsers = true;
+    isNormalUser = true;
     description = "Mika Boehme";
     extraGroups = [
       "wheel"
