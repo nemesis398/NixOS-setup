@@ -1,8 +1,10 @@
 # nixos-config
 
+**Mirror:** This repository is a read-only mirror of the canonical repo hosted on a private Gitea instance.
+
 Declarative NixOS configuration for a multi-machine AMD desktop/laptop fleet.
 
-> **Architecture Reference:** See [`nixos-architecture-reference-v3.md`](https://claude.ai/chat/nixos-architecture-reference-v3.md) for the full design document, all ADRs, and the operator decisions log.
+> **Architecture Reference:** See [`nixos-architecture-reference-v3.md`](./docs/nixos-architecture-reference-v3.md) for the full design document, all ADRs, and the operator decisions log.
 
 ------
 
